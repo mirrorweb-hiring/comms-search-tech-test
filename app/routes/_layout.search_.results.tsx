@@ -1,5 +1,5 @@
 import { type LoaderFunctionArgs, json } from '@remix-run/node'
-import { Outlet, useLoaderData, useSearchParams } from '@remix-run/react'
+import { Link, Outlet, useLoaderData, useSearchParams } from '@remix-run/react'
 import { requireSession } from '~/lib/auth'
 import { api } from '~/lib/utils'
 
@@ -15,12 +15,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   })
 
-  return json({ messages })
+  return json({ messages: messages || [] })
 }
 
 export default function SearchResults() {
-  // @ts-ignore
-  const { messages } = useLoaderData()
+  const { messages } = useLoaderData<typeof loader>()
   const [searchParams] = useSearchParams()
 
   return (
@@ -35,12 +34,9 @@ export default function SearchResults() {
                 </h2>
                 <p className='text-sm text-gray-500'>
                   Showing results for:{' '}
-                  <span
-                    className='font-semibold text-gray-900'
-                    dangerouslySetInnerHTML={{
-                      __html: searchParams.get('q') || '',
-                    }}
-                  />
+                  <span className='font-semibold text-gray-900'>
+                    {searchParams.get('q') || ''}
+                  </span>
                 </p>
               </div>
 
@@ -49,15 +45,15 @@ export default function SearchResults() {
                   role='list'
                   className='w-2/5 flex-shrink-0 divide-y divide-gray-100 overflow-scroll bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl'
                 >
-                  {messages.length &&
+                  {messages && messages.length > 0 &&
                     messages.map((message: any) => {
                       return (
-                        <li className='relative flex justify-between gap-x-6 px-3 py-4 hover:bg-gray-50 sm:px-6'>
+                        <li key={message.id} className='relative flex justify-between gap-x-6 px-3 py-4 hover:bg-gray-50 sm:px-6'>
                           <div className='flex min-w-0 gap-x-4'>
                             <div className='min-w-0 flex-auto'>
-                              <p className='text-sm font-semibold leading-6 text-gray-900'>
+                              <div className='text-sm font-semibold leading-6 text-gray-900'>
                                 <div>{message.from_email}</div>
-                              </p>
+                              </div>
                               <p className='mt-1 flex text-xs leading-5 text-gray-500'>
                                 <span className='relative truncate'>
                                   {message.content}
@@ -67,14 +63,14 @@ export default function SearchResults() {
                           </div>
                           <div className='flex shrink-0 items-center gap-x-4'>
                             <div className='hidden sm:flex sm:flex-col sm:items-end'>
-                              <a
-                                href={`/search/results/${
+                              <Link
+                                to={`/search/results/${
                                   message.id
                                 }?q=${searchParams.get('q')}`}
                                 className='text-sm font-semibold leading-6 text-pink-600 hover:underline'
                               >
                                 View
-                              </a>
+                              </Link>
                             </div>
                           </div>
                         </li>

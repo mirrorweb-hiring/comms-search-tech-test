@@ -17,8 +17,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 export default function Dashboard() {
-  // @ts-ignore
-  const { totalMessages, totalActions } = useLoaderData()
+  const { totalMessages, totalActions } = useLoaderData<typeof loader>()
 
   return (
     <div className='py-4'>
@@ -58,7 +57,7 @@ export default function Dashboard() {
 
 function StatsTotalCard({ name, currentMonth, previousMonth }: any) {
   const change = Number((((currentMonth - previousMonth) / previousMonth) * 100).toFixed(2))
-  const changeType = change > 0 ? 'increase' : 'decrease'
+  const changeType = change >= 0 ? 'increase' : 'decrease'
 
   return (
     <div className='px-4 py-5 sm:p-6'>
@@ -103,18 +102,52 @@ function MessageList() {
     fetch(API_URL + '/messages', {
       credentials: 'include',
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type')
+          let errorMessage = `Request failed with status ${res.status}: ${res.statusText}`
+          
+          if (contentType?.includes('application/json')) {
+            try {
+              const errorData = await res.json()
+              errorMessage = errorData.error || errorData.message || errorMessage
+            } catch {
+              const text = await res.text()
+              errorMessage = text || errorMessage
+            }
+          } else {
+            const text = await res.text()
+            errorMessage = text || errorMessage
+          }
+          
+          throw new Error(errorMessage)
+        }
+        
+        const contentType = res.headers.get('content-type')
+        if (!contentType?.includes('application/json')) {
+          const text = await res.text()
+          throw new Error(
+            `Expected JSON response but received ${contentType || 'unknown content type'}. Response: ${text.substring(0, 100)}`
+          )
+        }
+        
+        return res.json()
+      })
       .then((data) => {
         setMessages(data)
       })
-  })
+      .catch((error) => {
+        console.error('Failed to fetch messages:', error)
+        setMessages([])
+      })
+  }, [])
 
   return (
     <ul
       role='list'
       className='mt-4 divide-y divide-gray-100 overflow-hidden bg-white shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl'
     >
-      {messages.map((message: any) => {
+      {messages && messages.length > 0 && messages.map((message: any) => {
         return (
           <li
             key={message.id}
@@ -122,12 +155,12 @@ function MessageList() {
           >
             <div className='flex min-w-0 gap-x-4'>
               <div className='min-w-0 flex-auto'>
-                <p className='text-sm font-semibold leading-6 text-gray-900'>
+                <div className='text-sm font-semibold leading-6 text-gray-900'>
                   <div>
                     <span className='absolute inset-x-0 -top-px bottom-0' />
                     {message.from_email}
                   </div>
-                </p>
+                </div>
                 <p className='mt-1 flex text-xs leading-5 text-gray-500'>
                   <span className='relative truncate hover:underline'>
                     {message.subject}
