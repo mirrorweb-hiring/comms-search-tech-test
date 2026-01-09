@@ -57,7 +57,7 @@ export default function Dashboard() {
 }
 
 function StatsTotalCard({ name, currentMonth, previousMonth }: any) {
-  const change = ((currentMonth - previousMonth) / previousMonth) * 100
+  const change = Number((((currentMonth - previousMonth) / previousMonth) * 100).toFixed(2))
   const changeType = change > 0 ? 'increase' : 'decrease'
 
   return (
