@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "setup": "tsx scripts/init.ts",
+    "test:pagination": "npx tsx scripts/test-pagination.ts",
     "dev:api": "tsx watch ./api/index.ts",
     "dev:ui": "remix vite:dev",
     "dev": "npm-run-all --parallel dev:api dev:ui",

@@ -1,17 +1,61 @@
 import { ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/20/solid'
 import { json, LoaderFunctionArgs } from '@remix-run/node'
-import { useLoaderData } from '@remix-run/react'
+import { Link, useLoaderData } from '@remix-run/react'
 import { useEffect, useState } from 'react'
 import { requireSession } from '~/lib/auth'
-import { api, API_URL, classNames } from '~/lib/utils'
+import { api, API_URL, classNames, formatRelativeTime } from '~/lib/utils'
+
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  if (!status) {
+    return (
+      <span className='inline-flex items-center rounded-sm bg-gray-100 px-1 py-0.5 text-[10px] font-medium text-gray-800 whitespace-nowrap'>
+        No Status
+      </span>
+    )
+  }
+
+  const statusConfig = {
+    compliant: {
+      label: 'Compliant',
+      className: 'bg-green-100 text-green-800',
+    },
+    non_compliant: {
+      label: 'Non-Compliant',
+      className: 'bg-red-100 text-red-800',
+    },
+  }
+
+  const config = statusConfig[status as keyof typeof statusConfig] || {
+    label: status,
+    className: 'bg-gray-100 text-gray-800',
+  }
+
+  return (
+    <span className={classNames('inline-flex items-center rounded-sm px-1 py-0.5 text-[10px] font-medium whitespace-nowrap', config.className)}>
+      {config.label}
+    </span>
+  )
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await requireSession(request)
 
-  const [totalMessages, totalActions] = await Promise.all([
+  // Use Promise.allSettled to handle individual failures gracefully
+  const [totalMessagesResult, totalActionsResult] = await Promise.allSettled([
     api('/stats/total-messages', { headers: { cookie: session } }),
     api('/stats/total-message-actions', { headers: { cookie: session } }),
   ])
+
+  // Handle each result independently, providing fallback values on failure
+  const totalMessages =
+    totalMessagesResult.status === 'fulfilled'
+      ? totalMessagesResult.value
+      : { currentMonth: null, previousMonth: null, error: true }
+
+  const totalActions =
+    totalActionsResult.status === 'fulfilled'
+      ? totalActionsResult.value
+      : { currentMonth: null, previousMonth: null, error: true }
 
   return json({ totalMessages, totalActions })
 }
@@ -33,11 +77,13 @@ export default function Dashboard() {
                   name='Total Messages'
                   currentMonth={totalMessages.currentMonth}
                   previousMonth={totalMessages.previousMonth}
+                  hasError={totalMessages.error}
                 />
                 <StatsTotalCard
-                  name='Total Actions'
+                  name='Reviewed Messages'
                   currentMonth={totalActions.currentMonth}
                   previousMonth={totalActions.previousMonth}
+                  hasError={totalActions.error}
                 />
               </dl>
             </div>
@@ -55,9 +101,23 @@ export default function Dashboard() {
   )
 }
 
-function StatsTotalCard({ name, currentMonth, previousMonth }: any) {
+function StatsTotalCard({ name, currentMonth, previousMonth, hasError }: any) {
+  // Show error state if data failed to load
+  if (hasError || currentMonth === null || previousMonth === null) {
+    return (
+      <div className='px-4 py-5 sm:p-6'>
+        <dt className='text-base font-normal text-gray-900'>{name}</dt>
+        <dd className='mt-1 flex items-baseline justify-between md:block lg:flex'>
+          <div className='text-sm font-medium text-gray-500'>
+            Unable to load data
+          </div>
+        </dd>
+      </div>
+    )
+  }
+
   const change = Number((((currentMonth - previousMonth) / previousMonth) * 100).toFixed(2))
-  const changeType = change >= 0 ? 'increase' : 'decrease'
+  const changeType = change > 0 ? 'increase' : 'decrease'
 
   return (
     <div className='px-4 py-5 sm:p-6'>
@@ -107,31 +167,46 @@ function MessageList() {
           const contentType = res.headers.get('content-type')
           let errorMessage = `Request failed with status ${res.status}: ${res.statusText}`
           
+          // Read response body as text first (can only be read once)
+          const text = await res.text()
+          
+          // Try to parse as JSON if content type suggests it
           if (contentType?.includes('application/json')) {
             try {
-              const errorData = await res.json()
+              const errorData = JSON.parse(text)
               errorMessage = errorData.error || errorData.message || errorMessage
             } catch {
-              const text = await res.text()
+              // If JSON parsing fails, use the text as error message
               errorMessage = text || errorMessage
             }
           } else {
-            const text = await res.text()
+            // For non-JSON error responses (like "Gateway Timeout")
             errorMessage = text || errorMessage
           }
           
           throw new Error(errorMessage)
         }
         
+        // Read response body as text first (can only be read once)
+        // This ensures we can provide helpful error messages even if JSON parsing fails
+        const text = await res.text()
+        
         const contentType = res.headers.get('content-type')
         if (!contentType?.includes('application/json')) {
-          const text = await res.text()
           throw new Error(
             `Expected JSON response but received ${contentType || 'unknown content type'}. Response: ${text.substring(0, 100)}`
           )
         }
         
-        return res.json()
+        // Parse JSON from the text we already read
+        try {
+          return JSON.parse(text)
+        } catch (parseError) {
+          // If JSON parsing fails, we still have the text to include in the error
+          throw new Error(
+            `Failed to parse JSON response. Response: ${text.substring(0, 100)}`
+          )
+        }
       })
       .then((data) => {
         setMessages(data)
@@ -149,32 +224,32 @@ function MessageList() {
     >
       {messages && messages.length > 0 && messages.map((message: any) => {
         return (
-          <li
-            key={message.id}
-            className='relative flex justify-between gap-x-6 px-3 py-4 hover:bg-gray-50 sm:px-6'
-          >
-            <div className='flex min-w-0 gap-x-4'>
-              <div className='min-w-0 flex-auto'>
-                <div className='text-sm font-semibold leading-6 text-gray-900'>
-                  <div>
-                    <span className='absolute inset-x-0 -top-px bottom-0' />
+          <li key={message.id} className='relative'>
+            <Link
+              to={`/search/results/${message.id}`}
+              className='flex justify-between gap-x-6 px-3 py-4 hover:bg-gray-50 sm:px-6 cursor-pointer'
+            >
+              <div className='flex min-w-0 gap-x-4'>
+                <div className='min-w-0 flex-auto'>
+                  <div className='text-sm font-semibold leading-6 text-gray-900'>
                     {message.from_email}
                   </div>
+                  <p className='mt-1 flex text-xs leading-5 text-gray-500'>
+                    <span className='relative truncate'>
+                      {message.subject}
+                    </span>
+                  </p>
                 </div>
-                <p className='mt-1 flex text-xs leading-5 text-gray-500'>
-                  <span className='relative truncate hover:underline'>
-                    {message.subject}
-                  </span>
-                </p>
               </div>
-            </div>
-            <div className='flex shrink-0 items-center gap-x-4'>
-              <div className='hidden sm:flex sm:flex-col sm:items-end'>
-                <p className='text-xs leading-5 text-gray-500'>
-                  {new Date(message.created_at * 1000).toLocaleString()}
-                </p>
+              <div className='flex shrink-0 items-center gap-x-4'>
+                <StatusBadge status={message.status} />
+                <div className='hidden sm:flex sm:flex-col sm:items-end'>
+                  <p className='text-xs leading-5 text-gray-500'>
+                    {formatRelativeTime(message.created_at * 1000)}
+                  </p>
+                </div>
               </div>
-            </div>
+            </Link>
           </li>
         )
       })}

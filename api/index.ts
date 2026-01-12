@@ -31,7 +31,7 @@ serve(
 app.use(
 	cors({
 		origin: "http://localhost:5173",
-		allowMethods: ["POST", "GET", "OPTIONS"],
+		allowMethods: ["POST", "GET", "PUT", "OPTIONS"],
 		credentials: true,
 	})
 );
@@ -197,6 +197,28 @@ app.get("/search", (c) => {
 		return c.json({ error: "Please provide a search query" }, 400);
 	}
 
+	// Parse pagination parameters
+	const page = parseInt(c.req.query("page") || "1", 10);
+	const limit = parseInt(c.req.query("limit") || "20", 10);
+	const offset = (page - 1) * limit;
+
+	// Get total count for pagination
+	const totalCount = db
+		.prepare(
+			`SELECT COUNT(*) as count
+        FROM
+          message m
+        JOIN
+          identity from_identity ON m.\`from\` = from_identity.id
+        JOIN
+          identity to_identity ON m.\`to\` = to_identity.id
+        WHERE
+          m.subject LIKE ? OR m.content LIKE ?
+      `
+		)
+		.get(`%${query}%`, `%${query}%`) as { count: number };
+
+	// Get paginated messages
 	const messages = db
 		.prepare(
 			`SELECT
@@ -216,11 +238,18 @@ app.get("/search", (c) => {
         WHERE
           m.subject LIKE ? OR m.content LIKE ?
         ORDER BY m.created_at DESC
+        LIMIT ? OFFSET ?
       `
 		)
-		.all(`%${query}%`, `%${query}%`);
+		.all(`%${query}%`, `%${query}%`, limit, offset);
 
-	return c.json(messages);
+	return c.json({
+		messages,
+		total: totalCount.count,
+		page,
+		limit,
+		totalPages: Math.ceil(totalCount.count / limit),
+	});
 });
 
 app.get("/stats/total-messages", async (c) => {

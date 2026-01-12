@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from '@remix-run/react'
+import { Link, NavLink, Outlet } from '@remix-run/react'
 import { classNames } from '~/lib/utils'
 
 export default function AppLayout() {
@@ -46,12 +46,12 @@ export default function AppLayout() {
             </div>
             <div className='flex'>
               <div className='flex items-center'>
-                <a
-                  href=''
+                <Link
+                  to='/logout'
                   className='rounded-md bg-white px-2.5 py-1.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50'
                 >
                   Logout
-                </a>
+                </Link>
               </div>
             </div>
           </div>
