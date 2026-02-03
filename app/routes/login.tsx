@@ -35,7 +35,7 @@ export default function Login() {
             <div className='mx-auto w-full max-w-md'>
               <img
                 alt='Comms Search'
-                src='https://tailwindui.com/img/logos/mark.svg?color=pink&shade=600'
+                src='/mw-logo-only.svg'
                 className='mx-auto h-10 w-auto'
               />
               <h2 className='mt-2 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900'>
